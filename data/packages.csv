@@ -1,0 +1,16 @@
+order_id,category,weight_kg,length_cm,width_cm,height_cm,material,freight_cost,damaged
+1001,electronics,1.2,30,20,15,cardboard,8.5,0
+1002,glass,3.5,40,25,30,wood,22.0,1
+1003,clothing,0.8,35,25,5,bubble,6.0,0
+1004,electronics,2.1,45,35,25,cardboard,15.5,0
+1005,ceramics,2.8,30,30,30,wood,19.0,0
+1006,clothing,0.5,28,20,4,bubble,5.0,0
+1007,glass,4.2,50,30,35,wood,28.5,1
+1008,electronics,1.5,32,22,18,cardboard,9.0,0
+1009,ceramics,1.9,25,25,25,wood,14.0,1
+1010,clothing,0.6,30,22,5,bubble,5.5,0
+1011,electronics,2.6,48,38,28,cardboard,18.0,0
+1012,glass,2.4,35,25,20,wood,17.0,0
+1013,ceramics,3.2,36,36,30,wood,21.0,1
+1014,clothing,0.9,32,24,6,bubble,6.5,0
+1015,electronics,3.8,55,40,35,cardboard,24.0,0
