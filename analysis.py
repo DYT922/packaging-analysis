@@ -1,75 +1,70 @@
 """
-包装成本分析
-------------
-目标:比较不同包装材料的综合成本(运费 + 破损损失),给出可执行的优化建议。
-数据:data/packages.csv(15 条模拟快递包裹记录)
+包装成本分析 v2
+---------------
+数据:data/packages_clean.csv(由 clean_data.py 清洗得到)
+分析:整体成本对比 + 易碎品分层分析 + 破损率时间趋势
 运行:python analysis.py
 """
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 让图表正常显示中文,避免出现方块
 plt.rcParams["font.sans-serif"] = ["Microsoft YaHei"]
 plt.rcParams["axes.unicode_minus"] = False
 
-# 各类商品的假设货值(元/件),破损时按此计算损失
-VALUE_MAP = {"electronics": 100, "glass": 150, "ceramics": 100, "clothing": 30}
+CLEAN_PATH = "data/packages_clean.csv"
+MATERIAL_CN = {"bubble": "气泡袋", "cardboard": "纸箱", "wood": "木箱"}
+COLORS = {"bubble": "#4C9F70", "cardboard": "#3B82C4", "wood": "#C4623B"}
 
 
-def load_data(path="data/packages.csv"):
-    """读取数据,并派生分析所需的列。"""
-    df = pd.read_csv(path)
-    df["value"] = df["category"].map(VALUE_MAP)                        # 货值
-    df["volume"] = df["length_cm"] * df["width_cm"] * df["height_cm"]  # 体积(cm3)
-    df["unit_freight"] = df["freight_cost"] / df["weight_kg"]          # 单位运费(元/kg)
-    return df
+def load_data(path=CLEAN_PATH):
+    return pd.read_csv(path, parse_dates=["order_date"])
 
 
 def cost_summary(df):
-    """按包装材料汇总成本:总成本 = 平均运费 + 破损率 × 平均货值。"""
+    """总成本 = 平均运费 + 破损率 × 平均货值。"""
     freight = df.groupby("material")["freight_cost"].mean()
     rate = df.groupby("material")["damaged"].mean()
     value = df.groupby("material")["value"].mean()
     loss = rate * value
-    total = freight + loss
     return pd.DataFrame(
         {
             "平均运费": freight,
             "破损率": rate,
             "平均货值": value,
             "破损损失": loss,
-            "总成本": total,
+            "总成本": freight + loss,
         }
     )
 
 
-def plot_cost_compare(summary, path="charts/cost_compare.png"):
-    """总成本对比柱状图。"""
+def plot_total_cost(summary, path="charts/cost_compare.png"):
+    labels = [MATERIAL_CN.get(m, m) for m in summary.index]
+    colors = [COLORS.get(m, "#888888") for m in summary.index]
     plt.figure(figsize=(7, 4))
-    plt.bar(summary.index, summary["总成本"], color=["#4C9F70", "#3B82C4", "#C4623B"])
-    plt.title("三种包装材料的平均总成本对比")
+    plt.bar(labels, summary["总成本"], color=colors)
+    plt.title("各包装材料的平均总成本对比")
     plt.xlabel("包装材料")
     plt.ylabel("成本(元/件)")
-    for x, y in zip(summary.index, summary["总成本"]):
-        plt.text(x, y + 2, f"{y:.2f}", ha="center")
+    for x, y in zip(range(len(summary)), summary["总成本"]):
+        plt.text(x, y + 0.5, f"{y:.2f}", ha="center")
     plt.tight_layout()
     plt.savefig(path, dpi=150)
     plt.close()
 
 
-def plot_cost_stack(summary, path="charts/cost_stack.png"):
-    """成本构成堆叠柱状图:运费 + 破损损失。"""
+def plot_cost_stack(summary, title, path):
+    labels = [MATERIAL_CN.get(m, m) for m in summary.index]
     plt.figure(figsize=(7, 4))
-    plt.bar(summary.index, summary["平均运费"], label="运费", color="#3B82C4")
+    plt.bar(labels, summary["平均运费"], label="运费", color="#3B82C4")
     plt.bar(
-        summary.index,
+        labels,
         summary["破损损失"],
         bottom=summary["平均运费"],
         label="破损损失",
         color="#C4623B",
     )
-    plt.title("三种包装材料的成本构成对比")
+    plt.title(title)
     plt.xlabel("包装材料")
     plt.ylabel("成本(元/件)")
     plt.legend()
@@ -78,55 +73,86 @@ def plot_cost_stack(summary, path="charts/cost_stack.png"):
     plt.close()
 
 
+def plot_monthly(df, path="charts/monthly_damage.png"):
+    monthly = df.groupby("month")["damaged"].mean()
+    plt.figure(figsize=(7, 4))
+    plt.plot(monthly.index, monthly.values, marker="o", color="#C4623B")
+    plt.title("破损率月度趋势")
+    plt.xlabel("月份")
+    plt.ylabel("破损率")
+    plt.gca().yaxis.set_major_formatter(lambda v, _: f"{v:.1%}")
+    plt.tight_layout()
+    plt.savefig(path, dpi=150)
+    plt.close()
+    return monthly
+
+
 def main():
     df = load_data()
-    summary = cost_summary(df)
 
-    print("=" * 44)
+    print("=" * 48)
     print("一、数据概览")
-    print("=" * 44)
+    print("=" * 48)
     print(f"订单总数:{len(df)}")
-    print(f"破损订单:{int(df['damaged'].sum())} 件")
+    print(f"时间范围:{df['order_date'].min():%Y-%m-%d} ~ {df['order_date'].max():%Y-%m-%d}")
+    print(f"城市数量:{df['city'].nunique()}")
+    print(f"整体破损率:{df['damaged'].mean():.2%}")
     print(df.groupby("material").size().rename("订单数").to_frame().T)
 
+    summary = cost_summary(df)
     print()
-    print("=" * 44)
-    print("二、各包装材料成本对比(元/件)")
-    print("=" * 44)
+    print("=" * 48)
+    print("二、各包装材料综合成本(元/件)")
+    print("=" * 48)
     print(summary.round(2))
 
-    plot_cost_compare(summary)
-    plot_cost_stack(summary)
-
-    # 换料测算:木箱换成纸箱,省下的运费能覆盖多少新增破损
-    freight_wood = summary.loc["wood", "平均运费"]
-    freight_cardboard = summary.loc["cardboard", "平均运费"]
-    avg_value_glass = df[df["category"] == "glass"]["value"].mean()
-    saving = freight_wood - freight_cardboard
-    threshold = saving / avg_value_glass
-
-    total_wood = summary.loc["wood", "总成本"]
-    total_cardboard = summary.loc["cardboard", "总成本"]
-    loss_ratio = summary.loc["wood", "破损损失"] / total_wood * 100
+    fragile_df = df[df["fragile"] == 1]
+    fragile_summary = cost_summary(fragile_df)
+    print()
+    print("=" * 48)
+    print(f"三、易碎商品分层分析(共 {len(fragile_df)} 单)")
+    print("=" * 48)
+    print(fragile_summary.round(2))
 
     print()
-    print("=" * 44)
-    print("三、结论与建议")
-    print("=" * 44)
-    print(
-        f"1. 木箱平均总成本 {total_wood:.2f} 元/件,"
-        f"是纸箱({total_cardboard:.2f} 元/件)的 {total_wood / total_cardboard:.1f} 倍。"
+    print("非易碎商品参考:")
+    print(cost_summary(df[df["fragile"] == 0]).round(2))
+
+    monthly = plot_monthly(df)
+    plot_total_cost(summary)
+    plot_cost_stack(summary, "成本构成:运费 + 破损损失", "charts/cost_stack.png")
+    plot_cost_stack(fragile_summary, "易碎商品:各包装材料的成本构成对比", "charts/cost_fragile.png")
+
+    best = fragile_summary["总成本"].idxmin()
+    worst = fragile_summary["总成本"].idxmax()
+    gap = fragile_summary.loc[worst, "总成本"] - fragile_summary.loc[best, "总成本"]
+    worst_loss_ratio = (
+        fragile_summary.loc[worst, "破损损失"] / fragile_summary.loc[worst, "总成本"]
     )
-    print(f"2. 木箱成本中破损损失占 {loss_ratio:.0f}%,说明破损而非运费才是主要矛盾。")
-    print(
-        f"3. 换用纸箱每件可省运费 {saving:.2f} 元;按玻璃平均货值 "
-        f"{avg_value_glass:.0f} 元计算,纸箱破损率上升不超过 "
-        f"{threshold * 100:.1f} 个百分点时,换料才划算。"
-    )
-    print("4. 建议先小批量试运『纸箱 + 缓冲材料』包装玻璃陶瓷,采集实际破损数据后再决定是否全面更换。")
+
     print()
-    print("图表已保存到 charts/ 目录。")
-    print("注:本数据为教学用模拟数据,实际快递破损率通常在 1%-3%。")
+    print("=" * 48)
+    print("四、结论与建议")
+    print("=" * 48)
+    print(
+        f"1. 易碎商品中,{MATERIAL_CN[best]}综合成本最低"
+        f"({fragile_summary.loc[best, '总成本']:.2f} 元/件),"
+        f"{MATERIAL_CN[worst]}最高({fragile_summary.loc[worst, '总成本']:.2f} 元/件),"
+        f"每件相差 {gap:.2f} 元。"
+    )
+    print(
+        f"2. {MATERIAL_CN[worst]}在易碎品上的破损率为 "
+        f"{fragile_summary.loc[worst, '破损率']:.2%},破损损失 "
+        f"{fragile_summary.loc[worst, '破损损失']:.2f} 元/件,"
+        f"占其总成本的 {worst_loss_ratio:.0%}。"
+    )
+    print(
+        f"3. 破损率月度波动区间 "
+        f"{monthly.min():.2%} ~ {monthly.max():.2%},可据此进一步排查旺季或特定线路的问题。"
+    )
+    print("4. 建议:易碎品优先选择防护更好的材料,并通过小批量试运验证换料后的破损率变化。")
+    print()
+    print("图表已保存到 charts/。")
 
 
 if __name__ == "__main__":
